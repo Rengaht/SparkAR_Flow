@@ -122,18 +122,18 @@ var last_position=Reactive.pack3(0,0,0);
             var deltay=Reactive.cos(Time.ms.mul(DAMP_VEL)).mul(r).pinLastValue();
 
 
-            var new_pos=pos.add(Reactive.pack3(deltay,deltax,0));
+            var new_pos=pos.add(Reactive.pack3(deltay,deltax,0)).pinLastValue();
 
 
             // block.transform.rotation=fd.worldTransform.rotation;//lookAt(cameraPositionSignal);
 
-            block.transform.position=new_pos.pinLastValue();
+            block.transform.position=new_pos;
 
             // block.transform.rotationX = deviceMotionTransform.rotationX;
             // block.transform.rotationY = deviceMotionTransform.rotationY;
             // block.transform.rotationZ = deviceMotionTransform.rotationZ;
 
-            block.transform.rotation=worldPlaneTransform.inverse().lookAt(camera.worldTransform.position).rotation;
+            block.transform.rotation=worldPlaneTransform.lookAt(camera.worldTransform.position).rotation;
 
             // Diagnostics.log(new_pos.z.pinLastValue());
 
