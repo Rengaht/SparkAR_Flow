@@ -58,6 +58,9 @@ var last_position=Reactive.pack3(0,0,0);
 // Use import keyword to import a symbol from another file
 // import { animationDuration } from './script.js'
 
+
+
+
 (async function () {  // Enables async/await in JS [part 1]
 
     // Diagnostics.log("run!");
@@ -76,19 +79,16 @@ var last_position=Reactive.pack3(0,0,0);
     const DISAPPEAR_TIME = await Patches.outputs.getScalar('DisappearTime');
 
     const BLOCK_LIMIT = await Patches.outputs.getScalar('BlockLimitCount');
+    const MAX_DIST = await Patches.outputs.getScalar('MaxDistanceInBetween');
+
     const DAMP_DIST = await Patches.outputs.getScalar('BlockDampDistance');
+    const DAMP_SIZE = await Patches.outputs.getScalar('BlockDampSize');
 
-    const globalPosition = await Patches.outputs.getVector('globalPosition');
-
-    const deviceMotionTransform = DeviceMotion.worldTransform;
 
     const worldPlaneTransform = planeTracker.worldTransform.inverse();
 
+    container.transform=worldPlaneTransform;
 
-    // const myString = await Patches.outputs.getString('myString');
-
-
-    // Diagnostics.log(myString.pinLastValue());
 
     async function addBlock(){
 
@@ -106,75 +106,84 @@ var last_position=Reactive.pack3(0,0,0);
         }
 
          // Diagnostics.log(children.length);
+        const pos=fd.worldTransform.position;
+        
+        const dist=(last_position.magnitude().pinLastValue()<=0)?Reactive.val(0):pos.sub(last_position).magnitude();
 
-       Blocks.instantiate('block0',{}).then(async function(block) {
 
 
+        if(dist.gt(0).pinLastValue()){
             
-            var pos=fd.worldTransform.position;
-            // pos.add(Reactive.pack3(0,.2*count,.2*count));
-            // count++;
-            // if(Reactive.magnitude(pos).pinLastValue()!=0){
+            // Diagnostics.log(dist.pinLastValue());
             
-            var r=DAMP_DIST.pinLastValue();
+            var p=(dist.div(MAX_DIST).ceil()).pinLastValue();
 
-            var deltax=Reactive.sin(Time.ms.mul(DAMP_VEL)).mul(r).pinLastValue();
-            var deltay=Reactive.cos(Time.ms.mul(DAMP_VEL)).mul(r).pinLastValue();
-
-
-            var new_pos=pos.add(Reactive.pack3(deltay,deltax,0)).pinLastValue();
+            for(var i=0; i<1.0; i+=1.0/p){
 
 
-            // block.transform.rotation=fd.worldTransform.rotation;//lookAt(cameraPositionSignal);
+                const tmp_pos=last_position.mix(pos,i);
+                // Diagnostics.log(i+", "+tmp_pos.pinLastValue().toString());
 
-            block.transform.position=new_pos;
+                Blocks.instantiate('block0',{}).then(async function(block) {
 
-            // block.transform.rotationX = deviceMotionTransform.rotationX;
-            // block.transform.rotationY = deviceMotionTransform.rotationY;
-            // block.transform.rotationZ = deviceMotionTransform.rotationZ;
+                    var r=DAMP_DIST.pinLastValue();
 
-            block.transform.rotation=worldPlaneTransform.lookAt(camera.worldTransform.position).rotation;
-
-            // Diagnostics.log(new_pos.z.pinLastValue());
-
-            // var angle=Reactive.atan2(new_pos.x.sub(last_position.x).pinLastValue(),
-            //                          new_pos.y.sub(last_position.y).pinLastValue());
-            
-            // Diagnostics.log(`${block.transform.position.x.pinLastValue()},${block.transform.position.y.pinLastValue()}`);
-            // Diagnostics.log(last_position.pinLastValue());
-            // Diagnostics.log(angle.mul(180.0/Math.PI).pinLastValue()+90);
+                    // var deltax=Reactive.sin(Time.ms.mul(DAMP_VEL)).mul(r).pinLastValue();
+                    // var deltay=Reactive.cos(Time.ms.mul(DAMP_VEL)).mul(r).pinLastValue();
+                    var deltax=(Random.random()*2.0-1.0)*r;
+                    var deltay=deltax;
 
 
-            // block.transform.rotation=fd.worldTransform.rotation;//.pinLastValue();
-            // block.transform.rotation=Reactive.quaternionFromEuler(0,0,Reactive.val(Random.random()));
-            // block.transform.rotation=Reactive.quaternionFromEuler(0,0,angle.mul(1).pinLastValue()+Math.PI*.5);
+                    const new_pos=tmp_pos.add(Reactive.pack3(deltay,deltax,0));
 
-            // var world=fd.worldTransform.rotation.eulerAngles.pinLastValue();
-            // var deltaa=angle.add(Math.PI*.5).pinLastValue();
-
-            // block.transform.rotation=Reactive.quaternionFromEuler(0,0,deltaa);
-
-            block.material=material;
-
-            await container.addChild(block);
-            block.inputs.setBoolean('visible',true);
-            
-
-            Time.setTimeout(function(){
-                Scene.destroy(block);
-            },DISAPPEAR_TIME.pinLastValue());
-
-            
-            // last_position=pos.pinLastValue();
+                    try{
+                        block.transform.position=new_pos.pinLastValue();
 
 
-        });  
+                        const trackedPlaneRotation = Reactive.quaternionFromEuler(
+                            planeTracker.worldTransform.rotationX.sub(0),
+                            planeTracker.worldTransform.rotationZ.neg(),
+                            planeTracker.worldTransform.rotationY
+                        );
+
+                        const deviceRotation = Reactive.quaternionFromEuler(
+                            DeviceMotion.worldTransform.rotationX,
+                            DeviceMotion.worldTransform.rotationY,
+                            DeviceMotion.worldTransform.rotationZ
+                        );
+
+                        // block.transform.rotation=planeTracker.worldTransform.rotation.conjugate().mul(DeviceMotion.worldTransform.rotation);
+                        block.transform.rotation=trackedPlaneRotation.mul(deviceRotation);
+
+                        var tmp_scale=Math.max(0,(Random.random())*DAMP_SIZE.pinLastValue()+1);
+                        block.transform.scale=Reactive.pack3(tmp_scale,tmp_scale,tmp_scale);
+
+                    }catch(error){
+                        Diagnostics.log(error);
+                    }
+
+
+                    block.material=material;
+
+                    await container.addChild(block);
+                    block.inputs.setBoolean('visible',true);
+                    
+
+                    Time.setTimeout(function(){
+                        Scene.destroy(block);
+                    },DISAPPEAR_TIME.pinLastValue());
+
+                    
+                });  
+            }
+        }
+
+        last_position=pos.pinLastValue();
     }
 
     // const cameraPositionSignal=worldPlaneTransform.inverse().applyToPoint(fd.worldTransform.position);
     // container.transform.position=cameraPositionSignal;
-    container.transform=worldPlaneTransform;
-
+   
 
     const intervalTimer =Time.setInterval(function(){
         addBlock();
@@ -194,39 +203,20 @@ var last_position=Reactive.pack3(0,0,0);
     });
 
 
-    // const [plane] = await Promise.all([
-    //     Scene.root.findFirst('plane0')
-    // ]);
-
-    // Store a reference to the transform of the plane and the world transform of
-    // the DeviceMotion module
-    // const planeTransform = plane.transform;
-    // const deviceWorldTransform = DeviceMotion.worldTransform;
-
-    // Bind the rotation of the device to the plane
-    // planeTransform.rotationX = deviceWorldTransform.rotationX;
-    // planeTransform.rotationY = deviceWorldTransform.rotationY;
-    // planeTransform.rotationZ = deviceWorldTransform.rotationZ;
-
-    // plane.position=deviceWorldTransform.position.mul(-1);
-
-
-    // const cameraTransform=planeTracker.transform;
     
-    Diagnostics.watch("TransformX", worldPlaneTransform.position.x);
-    Diagnostics.watch("TransformY", worldPlaneTransform.position.y);
-    Diagnostics.watch("TransformZ", worldPlaneTransform.position.z);
+    // Diagnostics.watch("TransformX", pos.x);
+    // Diagnostics.watch("TransformY", pos.y);
+    // Diagnostics.watch("TransformZ", pos.z);
+
+    //  Diagnostics.watch("LTransformX", last_position.x);
+    // Diagnostics.watch("LTransformY", last_position.y);
+    // Diagnostics.watch("LTransformZ", plast_positionos.z);
     // Diagnostics.watch("TransformZ", deviceWorldTransform.rotationX);
 
 
-
-    // text2d.text=deviceWorldTransform.position.x.format("{:.2f}").concat(' , ')
-    //             .concat(deviceWorldTransform.position.y.format("{:.2f}")).concat(' , ')
-    //             .concat(deviceWorldTransform.position.z.toString());
-
-    text2d.text=worldPlaneTransform.position.x.format("{:.2f}").concat(' , ')
-                .concat(worldPlaneTransform.position.y.format("{:.2f}")).concat(' , ')
-                .concat(worldPlaneTransform.position.z.toString());
+    // text2d.text=worldPlaneTransform.position.x.format("{:.2f}").concat(' , ')
+    //             .concat(worldPlaneTransform.position.y.format("{:.2f}")).concat(' , ')
+    //             .concat(worldPlaneTransform.position.z.toString());
 
 
 
